@@ -80,6 +80,8 @@ venv/
 .venv/
 env/
 .env/
+.env.local
+.env.*.local
 # Добавлено для тестов и качества кода
 .pytest_cache/
 .mypy_cache/
