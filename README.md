@@ -1,6 +1,6 @@
-# 2030AI Project Template
+# AI Board Assistant for Manufacturing Company
 
-Шаблон проекта для разработки с ИИ-агентами: Claude Code, Codex и Cursor.
+Персональный офисный ассистент для членов совета директоров производственной компании (строительные материалы). Поддерживает анализ документов, финансовый контроль, управление рисками, ESG, аудит цепочки поставок, оценку эффективности совещаний и генерацию исследовательских отчетов.
 
 ## Важно
 
@@ -12,32 +12,47 @@
 ├── AGENTS.md                 # Универсальные правила для всех агентов
 ├── CLAUDE.md                 # Настройки для Claude Code (ссылается на AGENTS.md)
 ├── .gitignore                # Настроен для macOS/Windows/Linux, IDE, Python, Node.js
-├── .claude/                  # Команды и скиллы для Claude Code
-│   ├── commands/
-│   └── skills/
-└── agent_docs/               # Проектная документация
-    ├── index.md              # Навигация по документам
-    ├── architecture.md       # Архитектура и компоненты
-    ├── adr.md                # Архитектурные решения
-    ├── development-history.md # История разработки
-    ├── guides/               # Гайды (DoD, окружение, логирование)
-    └── templates/            # Шаблоны документов
+├── Inputs/                   # Исходные файлы (PDF, Excel, документы) – не коммитится
+├── Outputs/                  # Результаты работы навыков (отчёты, слайды) – не коммитится
+├── SYSTEM/
+│   ├── agent_docs/           # Проектная документация (архитектура, история, гайды)
+│   └── skills/               # Навыки ассистента
+│       ├── business_correspondence/
+│       ├── document_processing/
+│       ├── financial_analysis/
+│       ├── legal_review/     # Юридическая экспертиза и специфические навыки для совета
+│       │   ├── financial_control_and_analysis/
+│       │   ├── risk_management_and_compliance/
+│       │   ├── esg_and_sustainability/
+│       │   ├── supply_chain_audit/
+│       │   └── board_meeting_effectiveness/
+│       ├── meeting_protocols/
+│       ├── planning_organization/
+│       ├── presentation_creation/
+│       ├── report_to_slide/  # Извлечение тезисов из PDF и генерация слайда
+│       ├── research_information/
+│       └── visualization_data/
+└── USER/                     # Персональные файлы пользователя (доступ агента)
 ```
 
 ## Быстрый старт
 
 1. Клонируйте или используйте как template репозиторий
 2. Заполните блок описания проекта в `AGENTS.md`
-3. Ознакомьтесь с навигацией в `agent_docs/index.md`
-4. Начните разработку
+3. Поместите исходные документы в папку `Inputs/`
+4. Ознакомьтесь с навигацией в `SYSTEM/agent_docs/index.md`
+5. Запустите нужный навык, например: `opencode run financial_control_and_analysis`
+6. Результаты появятся в папке `Outputs/`
 
 ## Документация
 
 - `AGENTS.md` — правила работы и чек-листы
-- `agent_docs/index.md` — карта всех документов
+- `SYSTEM/agent_docs/index.md` — карта всех документов
+- `SYSTEM/SKILLS.md` — перечень доступных навыков с описанием
 
 ## Заметки
 
 - **Symlinks для Cursor/CLINE/Windsurf не добавлены** — школа рекомендует Claude Code, остальные инструменты умеют подтягивать `AGENTS.md` автоматически.
 - **Windows-специфичные правила не добавлены** — проект настроен для macOS.
 - **Строгие правила безопасности/тестирования не добавлены** — агенты справляются сами. Добавлены только: логирование (агенты его игнорируют, а оно критично) и двухуровневая история изменений (`development-history.md` + `adr.md`) — помогает агенту понимать контекст и причины решений.
+- Папки `Inputs/` и `Outputs/` добавлены в `.gitignore`, чтобы большие файлы и генерируемые изображения не коммитились.

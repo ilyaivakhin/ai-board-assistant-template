@@ -1,0 +1,174 @@
+#!/usr/bin/env python3
+"""
+report_to_slide skill: extract PDF text, produce markdown summary via LLM,
+then generate infographic slide via OpenRouter.
+"""
+import os
+import sys
+import pathlib
+import base64
+
+import pdfplumber
+import requests
+from dotenv import load_dotenv
+
+# Load environment variables from .env
+load_dotenv()
+
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+if not OPENROUTER_API_KEY:
+    sys.exit("Error: OPENROUTER_API_KEY not set in .env")
+
+OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+MODEL = "google/gemini-3.1-flash-image-preview"
+
+INPUTS_DIR = pathlib.Path("Inputs")
+OUTPUTS_DIR = pathlib.Path("Outputs")
+
+def extract_text_from_pdf(pdf_path: pathlib.Path) -> str:
+    """Extract all text from PDF using pdfplumber."""
+    text_parts = []
+    with pdfplumber.open(pdf_path) as pdf:
+        for page in pdf.pages:
+            text = page.extract_text()
+            if text:
+                text_parts.append(text)
+    return "\n".join(text_parts)
+
+def get_key_points_from_text(text: str) -> str:
+    """
+    Use LLM to extract 5-7 key points from the text.
+    Returns markdown bullet list.
+    """
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    # Limit text length to avoid exceeding context; but text is small.
+    max_chars = 4000
+    if len(text) > max_chars:
+        text = text[:max_chars]
+    prompt = (
+        "You are an expert analyst. Read the following text and extract the 5-7 most important key points. "
+        "For each point, provide a concise, informative sentence. "
+        "Return ONLY a markdown bullet list (lines starting with '- '). "
+        "Do not include any extra explanation, introduction, or conclusion.\n\n"
+        f"Text:\n{text}"
+    )
+    payload = {
+        "model": MODEL,
+        "messages": [
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.2,
+    }
+    response = requests.post(OPENROUTER_API_URL, headers=headers, json=payload, timeout=120)
+    if response.status_code != 200:
+        raise RuntimeError(f"OpenRouter API error (summarization) {response.status_code}: {response.text}")
+    data = response.json()
+    try:
+        content = data["choices"][0]["message"]["content"].strip()
+        # Ensure it starts with a dash; if not, we can still return.
+        # Debug: print what we got
+        print(f"DEBUG LLM summary: {content[:200]}")
+        return content
+    except (KeyError, IndexError, TypeError) as e:
+        raise RuntimeError(f"Unexpected response format (summarization): {data}") from e
+
+def save_markdown(summary_md: str, output_md_path: pathlib.Path):
+    output_md_path.parent.mkdir(parents=True, exist_ok=True)
+    output_md_path.write_text(summary_md, encoding="utf-8")
+    print(f"Saved markdown summary to {output_md_path}")
+
+def generate_image_from_markdown(markdown_text: str) -> bytes:
+    """
+    Call OpenRouter to generate image based on markdown prompt.
+    Expects the model to return an image (base64) in the response.
+    """
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": MODEL,
+        "messages": [
+            {
+                "role": "system",
+                "content": "You are an expert designer. Create a clean, professional one-slide infographic based on the key points provided. Use appropriate icons, charts, and layout. Return the slide as a PNG image."
+            },
+            {
+                "role": "user",
+                "content": f"Here are the key points:\n{markdown_text}\n\nCreate an infographic slide."
+            }
+        ],
+    }
+    response = requests.post(OPENROUTER_API_URL, headers=headers, json=payload, timeout=120)
+    if response.status_code != 200:
+        raise RuntimeError(f"OpenRouter API error (image) {response.status_code}: {response.text}")
+    data = response.json()
+    try:
+        message = data["choices"][0]["message"]
+        # Try to get image from message.images
+        if "images" in message and message["images"]:
+            img_info = message["images"][0]
+            if "url" in img_info and img_info["url"].startswith("data:image"):
+                header, b64 = img_info["url"].split(",", 1)
+                return base64.b64decode(b64)
+            elif "url" in img_info:
+                img_resp = requests.get(img_info["url"], timeout=60)
+                img_resp.raise_for_status()
+                return img_resp.content
+        # Fallback: content may be base64 string
+        if "content" in message and isinstance(message["content"], str):
+            content = message["content"]
+            try:
+                return base64.b64decode(content)
+            except Exception:
+                pass
+    except (KeyError, IndexError, TypeError) as e:
+        raise RuntimeError(f"Unexpected response format (image): {data}") from e
+    raise RuntimeError("No image found in OpenRouter response")
+
+def save_image(image_bytes: bytes, output_img_path: pathlib.Path):
+    output_img_path.parent.mkdir(parents=True, exist_ok=True)
+    output_img_path.write_bytes(image_bytes)
+    print(f"Saved slide image to {output_img_path}")
+
+def process_pdf(pdf_path: pathlib.Path):
+    print(f"Processing {pdf_path}...")
+    text = extract_text_from_pdf(pdf_path)
+    if not text.strip():
+        print("Warning: No text extracted from PDF.")
+        return
+    summary_md = get_key_points_from_text(text)
+    # Determine output filenames
+    stem = pdf_path.stem
+    md_path = OUTPUTS_DIR / f"{stem}.md"
+    img_path = OUTPUTS_DIR / f"{stem}_slide.png"
+    save_markdown(summary_md, md_path)
+    try:
+        image_bytes = generate_image_from_markdown(summary_md)
+        save_image(image_bytes, img_path)
+    except Exception as e:
+        print(f"Warning: Image generation failed: {e}")
+        print("Only markdown summary was saved.")
+
+def main():
+    # Ensure output directories exist
+    OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
+    # Determine which PDFs to process
+    if len(sys.argv) > 1:
+        pdf_files = [pathlib.Path(arg) for arg in sys.argv[1:]]
+    else:
+        pdf_files = list(INPUTS_DIR.glob("*.pdf"))
+    if not pdf_files:
+        print("No PDF files found to process.")
+        return
+    for pdf_file in pdf_files:
+        if not pdf_file.is_file():
+            print(f"Skipping {pdf_file}: not a file")
+            continue
+        process_pdf(pdf_file)
+
+if __name__ == "__main__":
+    main()

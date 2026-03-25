@@ -17,3 +17,6 @@
 - `agent_docs/templates/architecture.md`
 - `agent_docs/templates/adr.md`
 - `agent_docs/templates/development-history.md`
+
+## Навыки
+- `agent_docs/skills/report_to_slide.md` — описание навыка извлечения тезисов из PDF и генерации инфографики (реализация в `SYSTEM/skills/report_to_slide/`)
